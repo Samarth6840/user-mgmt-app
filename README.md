@@ -14,13 +14,14 @@ Full-stack user management system: account registration with e-mail verification
 
 ## Features
 
-- **Registration** — creates an `Unverified` account and queues a verification e-mail (background dispatcher with retry).
-- **E-mail confirmation** — one-time GUID link activates the account.
-- **Login** — validates credentials with BCrypt and issues a signed JWT (12 h).
-- **Users dashboard** — status badges (`Active` / `Blocked` / `Unverified`), relative last-seen times, debounced search, sortable columns.
-- **Bulk actions** — block, unblock, delete selected users; delete all unverified users.
-- **Session invalidation on self-block** — every request re-checks the caller's status (`ActiveUserFilter`); blocking your own account makes the next API call return `401 redirectToLogin`, and the frontend logs out automatically.
+- **Registration** — creates an `Unverified` account and queues a verification e-mail (background dispatcher with retry). The account can log in immediately.
+- **E-mail confirmation** — one-time GUID link flips the durable `EmailVerified` flag (`Unverified` → `Active`). Verification is optional and never blocks login.
+- **Login** — validates credentials with BCrypt and issues a signed JWT (12 h); only blocked accounts are refused. `LastLogin`/`LastActivity` move only on successful authentication — never on admin actions such as blocking.
+- **Users dashboard** — status badges (`Active` / `Blocked` / `Unverified`), relative last-seen times, debounced search, sortable columns with a deterministic tiebreaker so equal keys keep a stable order.
+- **Bulk actions** — block, unblock, delete selected users; delete all unverified users. Blocking touches only `Status`; unblocking restores the pre-block state (a never-verified account returns to `Unverified`, not `Active`).
+- **Session invalidation on self-block** — every request re-checks the caller's status (`ActiveUserFilter`); blocking your own account makes the next API call return `401 redirectToLogin`, and the frontend logs out automatically, showing the server's explanation on the login screen.
 - **Re-registration over unverified accounts** — resends a fresh verification link instead of locking the address out.
+- **Deep links work everywhere** — direct navigation to `/login`, `/register`, `/verify` is served by nginx `try_files` (Docker) or `public/_redirects` (Render/Netlify static hosting), so no "Not found" on refresh or shared URLs.
 
 ## Storage-level consistency
 
@@ -55,6 +56,10 @@ Resulting indexes in the database:
 | `idx_users_email_unique`   | UNIQUE btree on `Email` — consistency guarantee |
 | `idx_users_last_activity`  | speeds up the default "recently active" sort |
 | `PK_Users`                 | primary key                               |
+
+> Databases created by older builds are patched at startup with an idempotent
+> `ALTER TABLE ... ADD COLUMN IF NOT EXISTS "EmailVerified"` (plus a backfill of
+> already-`Active` accounts), because `EnsureCreated` never alters existing tables.
 
 ## Running locally
 

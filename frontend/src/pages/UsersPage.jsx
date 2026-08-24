@@ -72,18 +72,30 @@ export default function UsersPage() {
   const canUnblock = selectedUsers.some((u) => u.status === 'blocked');
   const canDelete = selected.size > 0;
 
-  async function runAction(url, successMsg) {
+  async function runAction(url, successMsg, confirmMsg) {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
     try {
-      await client.post(url, { ids: Array.from(selected) });
-      setToast({ type: 'success', message: successMsg });
+      const res = await client.post(url, { ids: Array.from(selected) });
+      setToast({ type: 'success', message: res.data?.message || successMsg });
       setSelected(new Set());
       load();
     } catch (err) {
-      setToast({ type: 'danger', message: err.response?.data?.message || 'Action failed.' });
+      if (!err.response?.data?.redirectToLogin) {
+        setToast({ type: 'danger', message: err.response?.data?.message || 'Action failed.' });
+      }
     }
   }
 
   async function deleteUnverified() {
+    const count = users.filter((u) => u.status === 'unverified').length;
+    if (
+      !window.confirm(
+        count > 0
+          ? `Delete all ${count} unverified user(s)? This cannot be undone.`
+          : 'Delete ALL unverified users? This cannot be undone.'
+      )
+    )
+      return;
     try {
       const res = await client.post('/users/delete-unverified');
       setToast({ type: 'success', message: res.data.message });
@@ -123,7 +135,13 @@ export default function UsersPage() {
             className="btn btn-outline-danger btn-sm"
             disabled={!canDelete}
             title="Delete selected users"
-            onClick={() => runAction('/users/delete', 'Selected user(s) deleted.')}
+            onClick={() =>
+              runAction(
+                '/users/delete',
+                'Selected user(s) deleted.',
+                `Delete ${selected.size} selected user(s)? This cannot be undone.`
+              )
+            }
           >
             <i className="bi bi-trash-fill" />
           </button>

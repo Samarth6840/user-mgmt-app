@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(320) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'unverified',
+  email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   verification_token UUID DEFAULT NULL,
   last_login TIMESTAMP DEFAULT NULL,
   last_activity TIMESTAMP DEFAULT NULL,

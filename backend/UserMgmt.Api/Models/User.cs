@@ -25,6 +25,11 @@ namespace UserMgmt.Api.Models
 
         public UserStatus Status { get; set; } = UserStatus.Unverified;
 
+        // Durable record of e-mail verification. Blocking must not erase it:
+        // after a block/unblock cycle the account returns to Active only if
+        // this flag is set, otherwise back to Unverified.
+        public bool EmailVerified { get; set; }
+
         public Guid? VerificationToken { get; set; }
 
         public DateTime? LastLogin { get; set; }

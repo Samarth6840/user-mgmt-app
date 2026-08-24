@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Verify from './pages/Verify.jsx';
@@ -8,9 +8,14 @@ function isAuthed() {
   return !!localStorage.getItem('token');
 }
 
-// Redirects unauthenticated visitors to the login page.
+// Redirects unauthenticated visitors to the login page and tells them why,
+// so the login screen can explain the unexpected change of view.
 function PrivateRoute({ children }) {
-  return isAuthed() ? children : <Navigate to="/login" replace />;
+  const location = useLocation();
+  if (!isAuthed()) {
+    return <Navigate to="/login" replace state={{ from: location.pathname, notice: 'Please sign in first — that page is only available to logged-in users.' }} />;
+  }
+  return children;
 }
 
 export default function App() {

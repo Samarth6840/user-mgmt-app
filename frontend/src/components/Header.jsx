@@ -5,7 +5,7 @@ export default function Header() {
 
   function logout() {
     localStorage.removeItem('token');
-    navigate('/login');
+    navigate('/login', { state: { notice: 'You have been logged out.' } });
   }
 
   return (

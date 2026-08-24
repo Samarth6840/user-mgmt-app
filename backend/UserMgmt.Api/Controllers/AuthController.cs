@@ -40,12 +40,14 @@ namespace UserMgmt.Api.Controllers
                 existing.Name = req.Name.Trim();
                 existing.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password);
                 existing.VerificationToken = Guid.NewGuid();
+                existing.EmailVerified = false;
 
                 await _db.SaveChangesAsync();
 
                 await _emailQueue.EnqueueAsync(new EmailJob(existing.Email, existing.Name, existing.VerificationToken!.Value));
 
-                return Ok(new MessageResponse("Registration successful. Please check your e-mail to verify your account."));
+                return Ok(new MessageResponse(
+                    "Registration successful. You can log in now. We also sent a verification link to your e-mail."));
             }
 
             // No application-level duplicate check here: the unique index
@@ -77,10 +79,12 @@ namespace UserMgmt.Api.Controllers
             // Queue the verification e-mail for reliable background delivery with retry.
             await _emailQueue.EnqueueAsync(new EmailJob(user.Email, user.Name, user.VerificationToken!.Value));
 
-            return Ok(new MessageResponse("Registration successful. Please check your e-mail to verify your account."));
+            return Ok(new MessageResponse(
+                "Registration successful. You can log in now. We also sent a verification link to your e-mail."));
         }
 
-        // Validates credentials and returns a JWT for active, verified users.
+        // Validates credentials and returns a JWT for any registered,
+        // non-blocked user. Verification is optional and never blocks login.
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
@@ -90,11 +94,9 @@ namespace UserMgmt.Api.Controllers
                 return Unauthorized(new MessageResponse("Invalid e-mail or password."));
 
             if (user.Status == UserStatus.Blocked)
-                return Unauthorized(new MessageResponse("This account has been blocked."));
+                return Unauthorized(new MessageResponse("This account has been blocked. Contact an administrator."));
 
-            if (user.Status == UserStatus.Unverified)
-                return Unauthorized(new MessageResponse("Please verify your e-mail before logging in."));
-
+            // Only a successful authentication updates LastLogin/LastActivity.
             user.LastLogin = DateTime.UtcNow;
             user.LastActivity = DateTime.UtcNow;
             await _db.SaveChangesAsync();
@@ -111,11 +113,15 @@ namespace UserMgmt.Api.Controllers
             if (user == null)
                 return NotFound(new MessageResponse("Invalid or expired verification link."));
 
+            // The link proves e-mail ownership, so the durable flag is set even
+            // if the account is currently blocked; only the status promotion is
+            // limited to unverified accounts (a stale link must not unblock).
+            user.EmailVerified = true;
+
             if (user.Status == UserStatus.Unverified)
-            {
                 user.Status = UserStatus.Active;
-                await _db.SaveChangesAsync();
-            }
+
+            await _db.SaveChangesAsync();
 
             return Ok(new MessageResponse("E-mail verified. You can now log in."));
         }

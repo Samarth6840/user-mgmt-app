@@ -29,14 +29,16 @@ namespace UserMgmt.Api.Controllers
                 query = query.Where(u => u.Name.ToLower().Contains(like) || u.Email.ToLower().Contains(like));
             }
 
+            // Id tiebreaker keeps the ordering deterministic when the primary
+            // key values are equal (otherwise rows can appear to shuffle).
             query = (sort, dir) switch
             {
-                ("email", "asc") => query.OrderBy(u => u.Email),
-                ("email", "desc") => query.OrderByDescending(u => u.Email),
-                ("name", "asc") => query.OrderBy(u => u.Name),
-                ("name", "desc") => query.OrderByDescending(u => u.Name),
-                (_, "asc") => query.OrderBy(u => u.LastActivity ?? u.CreatedAt),
-                _ => query.OrderByDescending(u => u.LastActivity ?? u.CreatedAt),
+                ("email", "asc") => query.OrderBy(u => u.Email).ThenBy(u => u.Id),
+                ("email", "desc") => query.OrderByDescending(u => u.Email).ThenByDescending(u => u.Id),
+                ("name", "asc") => query.OrderBy(u => u.Name).ThenBy(u => u.Id),
+                ("name", "desc") => query.OrderByDescending(u => u.Name).ThenByDescending(u => u.Id),
+                (_, "asc") => query.OrderBy(u => u.LastActivity ?? u.CreatedAt).ThenBy(u => u.Id),
+                _ => query.OrderByDescending(u => u.LastActivity ?? u.CreatedAt).ThenByDescending(u => u.Id),
             };
 
             var users = await query.Select(u => new UserRow(
@@ -47,6 +49,8 @@ namespace UserMgmt.Api.Controllers
         }
 
         // Marks one or more users as blocked in a single database round-trip.
+        // Only Status changes: LastLogin/LastActivity are login/session facts,
+        // not record-edit timestamps, and must stay untouched.
         [HttpPost("block")]
         public async Task<IActionResult> Block([FromBody] BulkIdsRequest req)
         {
@@ -58,14 +62,18 @@ namespace UserMgmt.Api.Controllers
             return Ok(new MessageResponse($"{affected} user(s) blocked."));
         }
 
-        // Re-activates previously blocked users.
+        // Re-activates previously blocked users. The status before the block is
+        // restored: a verified e-mail returns the account to Active, while an
+        // account that never verified goes back to Unverified.
         [HttpPost("unblock")]
         public async Task<IActionResult> Unblock([FromBody] BulkIdsRequest req)
         {
             if (req.Ids.Count == 0) return BadRequest(new MessageResponse("No users selected."));
 
             var affected = await _db.Users.Where(u => req.Ids.Contains(u.Id))
-                .ExecuteUpdateAsync(s => s.SetProperty(u => u.Status, UserStatus.Active));
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    u => u.Status,
+                    u => u.EmailVerified ? UserStatus.Active : UserStatus.Unverified));
 
             return Ok(new MessageResponse($"{affected} user(s) unblocked."));
         }

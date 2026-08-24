@@ -100,7 +100,22 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+
+    // EnsureCreated never alters existing tables, so databases created by an
+    // older build are patched here. Both statements are idempotent.
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE \"Users\" ADD COLUMN IF NOT EXISTS \"EmailVerified\" boolean NOT NULL DEFAULT false");
+        await db.Database.ExecuteSqlRawAsync(
+            "UPDATE \"Users\" SET \"EmailVerified\" = TRUE WHERE \"Status\" = 'Active' AND \"EmailVerified\" = FALSE");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Schema patch skipped ({ex.Message}); table will be created fresh.");
+    }
+
+    await db.Database.EnsureCreatedAsync();
 }
 
 if (app.Environment.IsDevelopment())

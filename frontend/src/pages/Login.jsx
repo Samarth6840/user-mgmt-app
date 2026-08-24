@@ -1,13 +1,31 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import client from '../api/client.js';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Explain why the user landed here when they did not choose to:
+  // a killed session (blocked/deleted account) or a guarded page.
+  useEffect(() => {
+    try {
+      const flash = sessionStorage.getItem('flash');
+      if (flash) {
+        setNotice(flash);
+        sessionStorage.removeItem('flash');
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    if (location.state?.notice) setNotice(location.state.notice);
+  }, [location.state]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -16,7 +34,7 @@ export default function Login() {
     try {
       const res = await client.post('/auth/login', { email, password });
       localStorage.setItem('token', res.data.token);
-      navigate('/users');
+      navigate(location.state?.from || '/users');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {
@@ -27,6 +45,7 @@ export default function Login() {
   return (
     <div className="container" style={{ maxWidth: 420, marginTop: '8vh' }}>
       <h1 className="h4 mb-4 text-center">Sign In to The App</h1>
+      {notice && <div className="alert alert-info py-2">{notice}</div>}
       {error && <div className="alert alert-danger py-2">{error}</div>}
       <form onSubmit={handleSubmit} noValidate>
         <div className="mb-3">
