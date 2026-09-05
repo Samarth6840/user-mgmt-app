@@ -2,3 +2,10 @@ node_modules/
 bin/
 obj/
 dist/
+
+# Never commit secrets
+appsettings.Development.json
+appsettings.Production.json
+*.env
+.env
+.env.*
